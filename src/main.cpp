@@ -65,7 +65,10 @@ void loop() {
                     debouncedState[i] == LOW ? "PRESSED" : "released",
                     BUTTON_PINS[i]);
       if (debouncedState[i] == LOW) {
-        Keyboard.write(BUTTON_KEYS[i]);
+        Keyboard.press(KEY_LEFT_GUI);
+        Keyboard.press(BUTTON_KEYS[i]);
+        delay(10);
+        Keyboard.releaseAll();
 
         if (BUTTON_IS_TOGGLE[i]) {
           toggleOn[i] = !toggleOn[i];
