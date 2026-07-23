@@ -1,16 +1,7 @@
 #include <Arduino.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <USB.h>
 #include <USBHIDKeyboard.h>
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-#define SCREEN_ADDRESS 0x3C
-
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 USBHIDKeyboard Keyboard;
 
 const uint8_t BUTTON_PINS[] = {1, 2, 3, 4}; // GPIO1-GPIO4
@@ -21,25 +12,18 @@ const unsigned long DEBOUNCE_MS = 30;
 // Record/Stream keys are shared between the Start and Stop hotkey slots -
 // OBS only acts on whichever one is valid for the current state, so one
 // key press toggles it.
-const uint8_t BUTTON_KEYS[] = {KEY_F13, KEY_F14, KEY_F15, KEY_F16};
-const char *BUTTON_LABELS[] = {"Record", "Stream", "Scene Up", "Scene Down"};
+const uint8_t BUTTON_KEYS[] = {KEY_F10, KEY_F9, KEY_F8, KEY_F7};
+const char *BUTTON_LABELS[] = {"Record", "Stream", "Scene 1", "Scene 2"};
+// Record/Stream are start/stop toggles; Scene 1/2 are one-shot actions.
+const bool BUTTON_IS_TOGGLE[] = {true, true, false, false};
 
 bool lastReading[NUM_BUTTONS];
 bool debouncedState[NUM_BUTTONS];
 unsigned long lastChangeTime[NUM_BUTTONS];
-
-void showMessage(const String &line1, const String &line2 = "") {
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 20);
-  display.println(line1);
-  if (line2.length() > 0) {
-    display.setTextSize(1);
-    display.println(line2);
-  }
-  display.display();
-}
+// Tracks assumed on/off state for toggle buttons. This is a local guess,
+// not read back from OBS, so it can drift out of sync if OBS is toggled
+// some other way (its own UI, a different hotkey, a crash, etc).
+bool toggleOn[NUM_BUTTONS];
 
 void setup() {
   Serial.begin(115200);
@@ -55,21 +39,14 @@ void setup() {
     lastReading[i] = digitalRead(BUTTON_PINS[i]);
     debouncedState[i] = lastReading[i];
     lastChangeTime[i] = 0;
+    toggleOn[i] = false;
     Serial.printf("Button %d -> GPIO%d, initial read = %s\n",
                   i + 1, BUTTON_PINS[i], lastReading[i] ? "HIGH (idle)" : "LOW (pressed?)");
   }
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println("SSD1306 init FAILED - check wiring/address");
-    for (;;) delay(1000);
-  }
-  Serial.println("SSD1306 init OK");
-
   Keyboard.begin();
   USB.begin();
   Serial.println("USB HID keyboard ready");
-
-  showMessage("Stream Deck", "Ready");
 }
 
 void loop() {
@@ -89,8 +66,14 @@ void loop() {
                     BUTTON_PINS[i]);
       if (debouncedState[i] == LOW) {
         Keyboard.write(BUTTON_KEYS[i]);
-        Serial.printf("Sent key for '%s'\n", BUTTON_LABELS[i]);
-        showMessage(BUTTON_LABELS[i], "key sent");
+
+        if (BUTTON_IS_TOGGLE[i]) {
+          toggleOn[i] = !toggleOn[i];
+          Serial.printf("Sent key for '%s' (%s)\n", BUTTON_LABELS[i],
+                        toggleOn[i] ? "started" : "stopped");
+        } else {
+          Serial.printf("Sent key for '%s'\n", BUTTON_LABELS[i]);
+        }
       }
     }
 
